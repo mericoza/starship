@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-MT5 QUANT STARSHIP – EINSTEIN FULL STACK (V2.1 LIGHT MODE + HARD-CODED DEMO CREDENTIALS)
+MT5 QUANT STARSHIP – EINSTEIN FULL STACK (V2.2 LIGHT MODE + HARD-CODED DEMO CREDENTIALS)
 ---------------------------------------------------------------------------
 Ova verzija:
   - Više trejdova (olabavljeni filteri)
@@ -14,10 +14,12 @@ Ova verzija:
   - Backtest modul + News integracija
   - Hard-coded DEMO MT5 kredencijali (na tvoj zahtjev)
   - Soft profit target (opcija – default off)
+  - Weekend trading shutdown (Saturday/Sunday) - use --allow-weekend-trading to override
 ---------------------------------------------------------------------------
 UPOZORENJE:
   Opušteni risk filteri povećavaju varijansu i potencijalni drawdown.
   Preporuka: testiraj na DEMO i skaliraj risk_per_trade prema balansu.
+  Trading je automatski onemogućen vikendom (subota/nedjelja) osim ako se koristi --allow-weekend-trading.
 
 POKRETANJE (LIVE DEMO):
   python mt5_quant_starship_einstein_full.py --mode live --einstein
@@ -247,6 +249,11 @@ PIP_FACTORS = {
     "AUDUSD":0.0001,"NZDUSD":0.0001,"USDJPY":0.01,"USDCHF":0.0001,"USDCAD":0.0001
 }
 def pip_factor(symbol): return PIP_FACTORS.get(symbol,0.0001)
+
+def is_weekend():
+    """Check if current UTC time is weekend (Saturday or Sunday)."""
+    weekday = datetime.utcnow().weekday()
+    return weekday in [5, 6]  # Saturday=5, Sunday=6
 def dynamic_position_size(balance, risk_percent, sl_pips, pip_value_est=10.0):
     risk_amount = balance * (risk_percent/100)
     if sl_pips <= 0: return 0.0
@@ -1853,6 +1860,7 @@ def main():
     parser.add_argument("--bt-enable-news",action="store_true")
     parser.add_argument("--bt-enable-ml",action="store_true")
     parser.add_argument("--bt-write-trades",action="store_true")
+    parser.add_argument("--allow-weekend-trading",action="store_true",help="Allow trading during weekends (Saturday/Sunday)")
     args=parser.parse_args()
 
     cfg=BASE_CONFIG
@@ -1873,7 +1881,19 @@ def main():
 
     global logger
     logger=setup_logger(cfg)
-    logger.info("=== STARSHIP EINSTEIN FULL V2.1 LIGHT (DEMO CREDS) INIT ===")
+    logger.info("=== STARSHIP EINSTEIN FULL V2.2 LIGHT (DEMO CREDS) INIT ===")
+
+    # Weekend trading shutdown check (live/demo modes only)
+    if args.mode in ["live", "demo"] and is_weekend() and not args.allow_weekend_trading:
+        logger.warning("Weekend trading disabled (Saturday/Sunday). Use --allow-weekend-trading to override.")
+        weekend_shutdown_marker = os.path.join(cfg["logging"]["log_dir"], "weekend_shutdown.marker")
+        os.makedirs(cfg["logging"]["log_dir"], exist_ok=True)
+        with open(weekend_shutdown_marker, "w") as f:
+            f.write(f"Weekend shutdown: {datetime.utcnow().isoformat()}\n")
+            f.write(f"Mode: {args.mode}\n")
+            f.write("Use --allow-weekend-trading to override weekend shutdown.\n")
+        logger.info(f"Weekend shutdown marker created: {weekend_shutdown_marker}")
+        return
 
     if args.mode=="backtest":
         news_manager=None
@@ -1961,7 +1981,7 @@ def main():
         for sym in einstein_ml.symbol_models.keys():
             einstein_ml._persist_symbol(sym)
     mt5c.shutdown()
-    logger.info("Gotovo. Starship Einstein Full V2.1 Light (Demo) se spustio.")
+    logger.info("Gotovo. Starship Einstein Full V2.2 Light (Demo) se spustio.")
 
 if __name__=="__main__":
     logger=setup_logger(BASE_CONFIG)
